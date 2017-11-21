@@ -330,12 +330,44 @@ function* scriptsToRunAt(urlStr=null, includeDisabled=false) {
 }
 
 
+async function upsertFromSource (source) {
+  let db = await openDb();
+  return new Promise((resolve, reject) => {
+    try {
+      let details = parseUserScript(source, null);
+      let remoteScript = new RemoteUserScript(details);
+      let txn = db.transaction([scriptStoreName], "readonly");
+      let store = txn.objectStore(scriptStoreName);
+      let index = store.index('id');
+      let req = index.get(remoteScript.id);
+      txn.oncomplete = event => {
+        details = req.result || details;
+        details.content = source;
+        details.parsedDetails = details;
+        let userScript = new EditableUserScript(details);
+        userScript.calculateEvalContent();
+        console.log('saving', userScript);
+        saveUserScript(userScript);
+        console.log('<<< upsertFromSource');
+        resolve(userScript.uuid);
+      };
+      txn.onerror = event => {
+        console.error('Error looking up script!', event);
+      };
+    } catch (e) {
+      console.error('at upsertFromSource(), db fail:', e);
+    }
+  });
+}
+
+
 // Export public API.
 window.UserScriptRegistry = {
   '_loadUserScripts': loadUserScripts,
   '_saveUserScript': saveUserScript,
   'scriptByUuid': scriptByUuid,
   'scriptsToRunAt': scriptsToRunAt,
+  'upsertFromSource': upsertFromSource,
 };
 
 })();
